@@ -84,3 +84,32 @@ def register():
   """Register the CSRF validation subscriber for C{IPubBeforeCommit}."""
   from zope.component import provideHandler
   provideHandler(validate_csrf_token)
+
+
+def _navigation_getCSRFToken(self, REQUEST=None):
+  """C{getCSRFToken} accessor patched onto C{App.Management.Navigation}."""
+  return getCSRFToken(REQUEST or self.REQUEST)
+
+
+def patch_manage_page_footer():
+  """
+  Patch C{App.Management.Navigation} - the mix-in providing C{manage_page_footer}
+  to virtually every manageable Zope object - so the Zope ZMI footer (not just
+  ZMS's own C{zmi_html_foot}) also injects the CSRF token into every form.
+
+  This overrides the class attribute with a ZMS-local copy of the template
+  (L{Products.zms.dtml.manage_page_footer}) instead of editing Zope's own
+  dtml file, so the override lives entirely in this add-on and is reverted
+  simply by not calling this function.
+  """
+  import App.Management
+  from App.special_dtml import DTMLFile
+
+  Navigation = App.Management.Navigation
+  Navigation.getCSRFToken = _navigation_getCSRFToken
+  # ClassSecurityInfo is consumed by InitializeClass() at import time and no
+  # longer available on the class, so declare access the old-style way (see
+  # e.g. Navigation.manage_form_title__roles__, also None for a public method).
+  Navigation.getCSRFToken__roles__ = None
+  Navigation.manage_page_footer = DTMLFile('dtml/manage_page_footer', globals())
+

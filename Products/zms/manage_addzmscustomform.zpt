@@ -9,30 +9,30 @@
 	<tal:block tal:content="structure python:here.obj_input_fields(action='%s/manage_addZMSCustom'%request['URL1'][len(request['BASE0']):],command='insert',meta_id=meta_id)">
 		the input-fields
 	</tal:block>
-	<script tal:content="structure python:'''
-	(function(token) {
-		function injectCSRFToken(container) {
-			container.querySelectorAll('form').forEach(function(form) {
-			var input = form.querySelector('input[name=csrf_token]');
-			if (!input) {
-				input = document.createElement('input');
-				input.type = 'hidden';
-				input.name = 'csrf_token';
-				form.appendChild(input);
-			}
-			input.value = token;
+	<script tal:content="python:('''
+		(function(token) {
+			function injectCSRFToken(container) {
+				container.querySelectorAll('form').forEach(function(form) {
+				var input = form.querySelector('input[name=csrf_token]');
+				if (!input) {
+					input = document.createElement('input');
+					input.type = 'hidden';
+					input.name = 'csrf_token';
+					form.appendChild(input);
+				}
+				input.value = token;
+				});
+			};
+			$(document).on('shown.bs.modal', '.modal', function() {
+				injectCSRFToken(this);
 			});
-		};
-		injectCSRFToken(document);
-		$(document).on('shown.bs.modal', '.modal', function() {
-			injectCSRFToken(this);
-		});
-		new MutationObserver(function() {
-			document.querySelectorAll('.modal').forEach(function(modal) {
-				injectCSRFToken(modal);
-			});
-		}).observe(document.body, {childList: true, subtree: true});
-	})('%s');
-	'''%(here.getCSRFToken(request))"></script>
+			new MutationObserver(function() {
+				document.querySelectorAll('.modal').forEach(function(modal) {
+					injectCSRFToken(modal);
+				});
+			}).observe(document.body, {childList: true, subtree: true});
+		})('%s');
+		'''%(here.getCSRFToken(request))).replace('\t','')">
+	</script>
 </div><!-- .zmi.properties -->
 </tal:block>

@@ -54,6 +54,16 @@ def _is_transactional(t):
   return any(isinstance(resource, ZODB.Connection.Connection) for resource in t._resources)
 
 
+def _is_submitted_form_request(request):
+  """Return C{True} only for actual form submissions, not for query-string GETs."""
+  method = str(getattr(request, 'method', '') or '').upper()
+  if method not in {'POST', 'PUT', 'PATCH', 'DELETE'}:
+    return False
+
+  form = getattr(request, 'form', None) or {}
+  return bool(form)
+
+
 @adapter(IPubBeforeCommit)
 def validate_csrf_token(event):
   """
@@ -65,18 +75,23 @@ def validate_csrf_token(event):
   @type event: ZPublisher.pubevents.PubBeforeCommit
   """
   request = event.request
-  form = getattr(request, 'form', None) or {}
-  if CSRF_FORM_KEY not in form:
+  if not _is_submitted_form_request(request):
     return
+
+  form = getattr(request, 'form', None) or {}
   t = transaction.get()
   if not _is_transactional(t):
     return
+
   session = getattr(request, 'SESSION', None)
   session_token = session.get(CSRF_SESSION_KEY) if session is not None else None
   submitted_token = form.get(CSRF_FORM_KEY)
-  if not session_token or not submitted_token or not hmac.compare_digest(str(session_token), str(submitted_token)):
-    request.response.setHeader('Content-Type', 'text/html;charset=utf-8')
-    request.response.setStatus(503, lock=True)
+
+  if CSRF_FORM_KEY not in form or not session_token or not submitted_token or not hmac.compare_digest(str(session_token), str(submitted_token)):
+    response = getattr(request, 'response', None)
+    if response is not None:
+      response.setHeader('Content-Type', 'text/html;charset=utf-8')
+      response.setStatus(503, lock=True)
     raise zExceptions.HTTPServiceUnavailable('Invalid CSRF token')
 
 

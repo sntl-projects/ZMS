@@ -12,16 +12,28 @@
     <script>
       <!-- ZMS: inject/refresh a hidden csrf_token field on every form of the Zope ZMI -->
       (function(token) {
-        document.querySelectorAll('form').forEach(function(form) {
-          var input = form.querySelector('input[name=csrf_token]');
-          if (!input) {
-            input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'csrf_token';
-            form.appendChild(input);
-          }
-          input.value = token;
-        });
+        function injectCSRFToken(container) {
+          container.querySelectorAll('form').forEach(function(form) {
+            var input = form.querySelector('input[name=csrf_token]');
+            if (!input) {
+              input = document.createElement('input');
+              input.type = 'hidden';
+              input.name = 'csrf_token';
+              form.appendChild(input);
+            }
+            input.value = token;
+          });
+        };
+        injectCSRFToken(document);
+        var modal = document.getElementById('zmi-modal');
+        if (modal) {
+          $('#zmi-modal').on('shown.bs.modal', function() {
+            injectCSRFToken(this);
+          });
+          new MutationObserver(function() {
+            injectCSRFToken(modal);
+          }).observe(modal, {childList: true, subtree: true});
+        }
       })('<dtml-var expr="getCSRFToken(REQUEST)">');
     </script>
   </dtml-unless>

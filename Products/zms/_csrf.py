@@ -57,7 +57,7 @@ def _is_transactional(t):
 def _is_submitted_form_request(request):
   """Return C{True} only for actual form submissions, not for query-string GETs."""
   method = str(getattr(request, 'method', '') or '').upper()
-  if method not in {'GET','POST', 'PUT', 'PATCH', 'DELETE', 'QUERY'}:
+  if method not in {'POST', 'PUT', 'PATCH', 'DELETE', 'QUERY'}:
     return False
 
   form = getattr(request, 'form', None) or {}
@@ -75,10 +75,17 @@ def validate_csrf_token(event):
   @type event: ZPublisher.pubevents.PubBeforeCommit
   """
   request = event.request
-  if not _is_submitted_form_request(request):
-    return
 
   form = getattr(request, 'form', None) or {}
+  # The form may be empty for a GET request with query parameters, 
+  # so we only validate the token for actual form submissions 
+  # that result in ZODB writes. This avoids breaking GET requests 
+  # that are not intended to be CSRF-protected.
+  # ---
+  # if not _is_submitted_form_request(request):
+  if not form or all(key in ['lang', CSRF_FORM_KEY] for key in form.keys()):
+    return
+
   t = transaction.get()
   if not _is_transactional(t):
     return

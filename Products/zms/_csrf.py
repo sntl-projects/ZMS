@@ -57,7 +57,7 @@ def _is_transactional(t):
 def _is_submitted_form_request(request):
   """Return C{True} only for actual form submissions, not for query-string GETs."""
   method = str(getattr(request, 'method', '') or '').upper()
-  if method not in {'POST', 'PUT', 'PATCH', 'DELETE'}:
+  if method not in {'GET','POST', 'PUT', 'PATCH', 'DELETE', 'QUERY'}:
     return False
 
   form = getattr(request, 'form', None) or {}

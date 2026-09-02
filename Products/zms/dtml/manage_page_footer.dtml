@@ -10,7 +10,7 @@
       </dtml-if>
     </script>
     <script>
-      <!-- ZMS: inject/refresh a hidden csrf_token field on every form of the Zope ZMI -->
+      // ZMS provides a hidden csrf_token field on any ZMI form
       (function(token) {
         function injectCSRFToken(container) {
           container.querySelectorAll('form').forEach(function(form) {

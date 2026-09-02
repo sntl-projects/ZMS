@@ -22,15 +22,6 @@
 			});
 		};
 		injectCSRFToken(document);
-		var tabs = document.getElementById('tabs_items');
-		if (tabs) {
-			tabs.querySelectorAll('a').forEach(function(link) {
-				var url = new URL(link.href);
-				url.searchParams.set('csrf_token', token);
-				link.href = url.toString();
-				link.setAttribute('hx-get', url.toString());
-			});
-		};
 		$(document).on('shown.bs.modal', '.modal', function() {
 			injectCSRFToken(this);
 		});

@@ -3,7 +3,9 @@
 import unittest
 import json
 import time
+from types import SimpleNamespace
 from unittest.mock import Mock, MagicMock, patch
+from Products.zms import _csrf
 from Products.zms import standard
 from Products.zms import zms
 
@@ -117,3 +119,53 @@ class StandardTest(unittest.TestCase):
         self.assertTrue(len(result) > 0)
         # Verify it contains typical site-packages indicators
         self.assertTrue('site-packages' in result or 'dist-packages' in result)
+
+    def test_validate_csrf_token_ignores_non_form_requests(self):
+        request = SimpleNamespace(
+            method='GET',
+            form={},
+            SESSION={_csrf.CSRF_SESSION_KEY: 'session-token'},
+            response=Mock(),
+        )
+        event = SimpleNamespace(request=request)
+
+        with patch('Products.zms._csrf._is_transactional', return_value=True):
+            _csrf.validate_csrf_token(event)
+
+    def test_validate_csrf_token_ignores_query_string_only_get(self):
+        request = SimpleNamespace(
+            method='GET',
+            form={'lang': 'ger'},
+            SESSION={_csrf.CSRF_SESSION_KEY: 'session-token'},
+            response=Mock(),
+        )
+        event = SimpleNamespace(request=request)
+
+        with patch('Products.zms._csrf._is_transactional', return_value=True):
+            _csrf.validate_csrf_token(event)
+
+    def test_validate_csrf_token_allows_authentication_requests_without_token(self):
+        request = SimpleNamespace(
+            method='POST',
+            form={'__ac_name': 'admin', '__ac_password': 'secret'},
+            SESSION={_csrf.CSRF_SESSION_KEY: 'session-token'},
+            environ={'HTTP_AUTHORIZATION': 'Basic Zm9vOmJhcg=='},
+            response=Mock(),
+        )
+        event = SimpleNamespace(request=request)
+
+        with patch('Products.zms._csrf._is_transactional', return_value=True):
+            _csrf.validate_csrf_token(event)
+
+    def test_validate_csrf_token_rejects_missing_field_for_transactional_form_write(self):
+        request = SimpleNamespace(
+            method='POST',
+            form={'action': 'save'},
+            SESSION={_csrf.CSRF_SESSION_KEY: 'session-token'},
+            response=Mock(),
+        )
+        event = SimpleNamespace(request=request)
+
+        with patch('Products.zms._csrf._is_transactional', return_value=True):
+            with self.assertRaises(Exception):
+                _csrf.validate_csrf_token(event)

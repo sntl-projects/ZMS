@@ -92,6 +92,9 @@ function ZMSGraphic_extEdit_action( elName, elParams, pil) {
 		var v = s.substring(s.indexOf('=')+1);
 		ZMSGraphic_params[k] = v;
 	}
+	if (document.getElementsByName('csrf_token').length>0) {
+		ZMSGraphic_params['csrf_token'] = document.getElementsByName('csrf_token')[0].value;
+	};
 	zmiRegisterParams(elName,ZMSGraphic_params);
 	if (!ZMSGraphic_pil) {
 		var $elCrop = $($('#ZMSGraphic_extEdit_crop').parents('div')[0]);

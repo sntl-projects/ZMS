@@ -123,6 +123,7 @@ class StandardTest(unittest.TestCase):
 
     def test_is_transactional_only_detects_changed_zodb_objects(self):
         resource = Mock(spec=_csrf.ZODB.Connection.Connection)
+        resource.db.return_value.database_name = 'main'
         changed_object = SimpleNamespace(_p_jar=resource, _p_changed=True)
         resource._registered_objects = [changed_object]
 
@@ -131,7 +132,8 @@ class StandardTest(unittest.TestCase):
 
     def test_is_transactional_ignores_transient_resources(self):
         resource = Mock(spec=_csrf.ZODB.Connection.Connection)
-        transient_object = Mock(spec=_csrf.TransientObject)
+        resource.db.return_value.database_name = 'temporary'
+        transient_object = SimpleNamespace()
         transient_object._p_jar = resource
         transient_object._p_changed = True
         resource._registered_objects = [transient_object]
@@ -141,6 +143,7 @@ class StandardTest(unittest.TestCase):
 
     def test_is_transactional_ignores_unchanged_or_foreign_objects(self):
         resource = Mock(spec=_csrf.ZODB.Connection.Connection)
+        resource.db.return_value.database_name = 'main'
         resource._registered_objects = [
             SimpleNamespace(_p_jar=resource, _p_changed=False),
             SimpleNamespace(_p_jar=Mock(), _p_changed=True),
@@ -148,6 +151,10 @@ class StandardTest(unittest.TestCase):
 
         self.assertFalse(_csrf._is_transactional(SimpleNamespace(
             _resources=[resource])))
+
+    def test_is_transactional_ignores_memcache_or_other_resources(self):
+        self.assertFalse(_csrf._is_transactional(SimpleNamespace(
+            _resources=[SimpleNamespace()])))
 
     def test_validate_csrf_token_ignores_non_form_requests(self):
         request = SimpleNamespace(

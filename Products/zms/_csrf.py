@@ -24,15 +24,12 @@ import ZODB.Connection
 import zExceptions
 from zope.component import adapter
 from ZPublisher.interfaces import IPubBeforeCommit
-from Products.Transience.TransientObject import TransientObject
-from Products.Transience.Transience import TransientObjectContainer
-from Products.Transience.Transience import Increaser
-from Products.Transience.Transience import Length2
 
 # Session key holding the expected token and form/query field name
 # expected to carry the token back with a submitted form.
 CSRF_SESSION_KEY = '_csrft_'
 CSRF_FORM_KEY = 'csrf_token'
+TEMPORARY_DATABASE_NAME = 'temporary'
 
 
 def getCSRFToken(request):
@@ -58,33 +55,17 @@ def _is_transactional(t):
   for resource in t._resources:
     if not isinstance(resource, ZODB.Connection.Connection):
       continue
+
+    get_db = getattr(resource, 'db', None)
+    db = get_db() if callable(get_db) else None
+    if getattr(db, 'database_name', None) == TEMPORARY_DATABASE_NAME:
+      continue
+
     for obj in getattr(resource, '_registered_objects', ()):
-      if isinstance(obj, (TransientObject, TransientObjectContainer, Increaser, Length2)):
-        continue
       if (getattr(obj, '_p_jar', None) is resource
           and getattr(obj, '_p_changed', False)):
         return True
   return False
-
-
-def _is_submitted_form_request(request):
-  """Return C{True} only for actual form submissions, not for query-string GETs."""
-  method = str(getattr(request, 'method', '') or '').upper()
-  environ = getattr(request, 'environ', {}) or {}
-  form = getattr(request, 'form', None) or {}
-  
-  if environ.get('HTTP_AUTHORIZATION'):
-    return False
-
-  if method in {'POST', 'PUT', 'PATCH', 'DELETE', 'QUERY'}:
-    return True
-  elif method == 'GET' and form:
-    save_keys = ['lang','manage_tabs_message',CSRF_SESSION_KEY]
-    if [k for k in form if k not in save_keys]:
-      return True
-  
-  return False
-
 
 
 @adapter(IPubBeforeCommit)
@@ -101,9 +82,6 @@ def validate_csrf_token(event):
 
   t = transaction.get()
   if not _is_transactional(t):
-    return
-
-  if not _is_submitted_form_request(request):
     return
 
   form = getattr(request, 'form', None) or {}

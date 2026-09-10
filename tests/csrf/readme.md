@@ -1,4 +1,4 @@
-# Handling transactional GET-Requests
+# Handling Transactional GET-Requests
 
 _Wie lässt sich im ZMS code am effektivsten verhindern, dass dessen verändernde API-Funktionen per GET-Request aufgerufen werden können. Zope erlaubt verändernde GET-Requests bzw. beschränkt transaktionale Requests nicht auf POST, selbst wenn im Web-GU die form-method auf "post" gesetzt ist. Ziel dabei ist, es zu vermeiden werden, dass auch GET-Requests mit CSRF-Token validiert werden müssen._
 
@@ -279,3 +279,19 @@ ZMS verfügt über 106 transaktionale "manage"-Funktionen in 37 Dateien:
 * def manage_objects_clear(self, home_id):
 * def manage_destroy(self):
 * def manage_changeProperties(self, btn, lang, REQUEST, RESPONSE):
+
+# UI-implizite Transaktionen
+
+Implizite Transaktionen auf GET-UI-Requests können Daten synchronisieren und unterstützen so die implizite Korrektur möglicher Fehler.
+Als Quickfix könnte für diese speziellen Fälle entweder der  URL-Parameter csrf_token verhindern, dass das UI blockiert wird oder csrf-Validierung wird für Transaktionen mit nur einem Parameter "lang" umgangen (siehe Commit 0a0a3aa).
+
+## metacmd_manager/manage_main
+
+Das TAL-Template ruft `ZMSMetacmdProvider.getMetaCmdIds()` auf, was wiederum zwei schreibende Funktionsaufrufe zur Folge hat:
+
+_ZMSMetacmdProvider.py:392-423:_
+1. zopeutil.removeObject(...)
+2. zopeutil.addObject(..., force_save=True)
+
+Weiterhin bedingt `here.hasMetaCmdReadme(metaCmd['id'])` die Anlage eines readme-Objekts, falls dieses fehlt.
+

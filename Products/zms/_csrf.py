@@ -24,6 +24,10 @@ import ZODB.Connection
 import zExceptions
 from zope.component import adapter
 from ZPublisher.interfaces import IPubBeforeCommit
+from Products.Transience.TransientObject import TransientObject
+from Products.Transience.Transience import TransientObjectContainer
+from Products.Transience.Transience import Increaser
+from Products.Transience.Transience import Length2
 
 # Session key holding the expected token and form/query field name
 # expected to carry the token back with a submitted form.
@@ -50,18 +54,37 @@ def getCSRFToken(request):
 
 
 def _is_transactional(t):
-  """Return C{True} if the given transaction registered ZODB writes."""
-  return any(isinstance(resource, ZODB.Connection.Connection) for resource in t._resources)
+  """Return C{True} if the transaction has a changed persistent object."""
+  for resource in t._resources:
+    if not isinstance(resource, ZODB.Connection.Connection):
+      continue
+    for obj in getattr(resource, '_registered_objects', ()):
+      if isinstance(obj, (TransientObject, TransientObjectContainer, Increaser, Length2)):
+        continue
+      if (getattr(obj, '_p_jar', None) is resource
+          and getattr(obj, '_p_changed', False)):
+        return True
+  return False
 
 
 def _is_submitted_form_request(request):
   """Return C{True} only for actual form submissions, not for query-string GETs."""
   method = str(getattr(request, 'method', '') or '').upper()
-  if method not in {'POST', 'PUT', 'PATCH', 'DELETE', 'QUERY'}:
+  environ = getattr(request, 'environ', {}) or {}
+  form = getattr(request, 'form', None) or {}
+  
+  if environ.get('HTTP_AUTHORIZATION'):
     return False
 
-  form = getattr(request, 'form', None) or {}
-  return bool(form)
+  if method in {'POST', 'PUT', 'PATCH', 'DELETE', 'QUERY'}:
+    return True
+  elif method == 'GET' and form:
+    save_keys = ['lang','manage_tabs_message',CSRF_SESSION_KEY]
+    if [k for k in form if k not in save_keys]:
+      return True
+  
+  return False
+
 
 
 @adapter(IPubBeforeCommit)
@@ -76,20 +99,14 @@ def validate_csrf_token(event):
   """
   request = event.request
 
-  form = getattr(request, 'form', None) or {}
-  # The form may be empty for a GET request with query parameters, 
-  # so we only validate the token for actual form submissions 
-  # that result in ZODB writes. This avoids breaking GET requests 
-  # that are not intended to be CSRF-protected.
-  # ---
-  # if not _is_submitted_form_request(request):
-  if not form or all(key in ['lang', CSRF_FORM_KEY] for key in form.keys()):
-    return
-
   t = transaction.get()
   if not _is_transactional(t):
     return
 
+  if not _is_submitted_form_request(request):
+    return
+
+  form = getattr(request, 'form', None) or {}
   session = getattr(request, 'SESSION', None)
   session_token = session.get(CSRF_SESSION_KEY) if session is not None else None
   submitted_token = form.get(CSRF_FORM_KEY)

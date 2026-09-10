@@ -79,12 +79,15 @@ def validate_csrf_token(event):
   @type event: ZPublisher.pubevents.PubBeforeCommit
   """
   request = event.request
+  form = getattr(request, 'form', None) or {}
+  # ZMI-Special-Case
+  if list(form.keys())==['lang']:
+    return 
 
   t = transaction.get()
   if not _is_transactional(t):
     return
 
-  form = getattr(request, 'form', None) or {}
   session = getattr(request, 'SESSION', None)
   session_token = session.get(CSRF_SESSION_KEY) if session is not None else None
   submitted_token = form.get(CSRF_FORM_KEY)

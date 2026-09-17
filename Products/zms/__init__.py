@@ -40,6 +40,7 @@ import os
 import re
 # Product Imports.
 from Products.zms import _confmanager, _fileutil
+from Products.zms import _csrf
 from Products.zms import _multilangmanager
 from Products.zms import _mediadb
 from Products.zms import _zmsattributecontainer
@@ -201,6 +202,11 @@ def initialize(context):
         dummy_constructors = (zmscustom.manage_addZMSCustomForm, zmscustom.manage_addZMSCustom,)
         dummy_permission = 'Add ZMSs'
         zms.NoETagAdapter.register()
+
+        # register global CSRF token validation for any published Zope object
+        _csrf.register()
+        # inject the CSRF token into every form rendered by the Zope ZMI footer
+        _csrf.patch_manage_page_footer()
         
         # automated registration of language-dictionary
         if not hasattr(OFS.misc_.misc_,'zms'):

@@ -7,4 +7,5 @@
 		// console.log('common.zmi_html_foot: executed history.replaceState()')
 	};
 </script>
+<script tal:replace="structure python:here.zmi_csrf()"></script>
 <!-- /common/zmi_html_foot -->

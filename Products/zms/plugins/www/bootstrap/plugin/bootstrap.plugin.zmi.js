@@ -1580,6 +1580,9 @@ ZMIActionList.prototype.over = function(el, e, cb) {
 	var params = {};
 	params['lang'] = lang;
 	params['context_id'] = context_id;
+	if (document.getElementsByName('csrf_token').length>0) {
+		params['csrf_token'] = document.getElementsByName('csrf_token')[0].value;
+	};
 	// JQuery.AJAX.get
 	$.get( action, params, function(data) {
 		// Get object-id.

@@ -51,6 +51,7 @@ from Products.zms import standard
 from Products.zms import _accessmanager
 from Products.zms import _builder
 from Products.zms import _confmanager
+from Products.zms import _csrf
 from Products.zms import _enummanager
 from Products.zms import _fileutil
 from Products.zms import _importable
@@ -616,6 +617,23 @@ class ZMS(
     def getTrashcan(self):
       """Return the site's trashcan object."""
       return self.objectValues(['ZMSTrashcan'])[0]
+
+    def getCSRFToken(self, REQUEST=None):
+      """
+      Return the CSRF token stored in the current session, creating it if
+      it does not yet exist. Templates rendering forms should embed this
+      value in a hidden field named C{csrf_token} (see L{Products.zms._csrf.CSRF_FORM_KEY}).
+
+      For use in templates e.g.
+      <input type="hidden" name="csrf_token" tal:attributes="value context/getCSRFToken" />).
+      The token is validated globally by L{Products.zms._csrf}.
+
+      @param REQUEST: Active HTTP request.
+      @type REQUEST: ZPublisher.HTTPRequest.HTTPRequest | None
+      @return: CSRF token.
+      @rtype: str
+      """
+      return _csrf.getCSRFToken(REQUEST or self.REQUEST)
 
     def getNewId(self, id_prefix='e'):
       """

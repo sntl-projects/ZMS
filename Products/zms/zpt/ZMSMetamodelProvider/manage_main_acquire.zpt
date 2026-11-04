@@ -106,6 +106,6 @@
 			</div>
 		</form>
 	</tal:block>
-
+<script tal:replace="structure python:here.zmi_csrf()"></script>
 </body>
 </html>

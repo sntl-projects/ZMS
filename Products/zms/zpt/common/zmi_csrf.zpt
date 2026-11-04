@@ -1,0 +1,26 @@
+<script tal:content="python:('''
+	(function(token) {
+		function injectCSRFToken(container) {
+			container.querySelectorAll('form').forEach(function(form) {
+			var input = form.querySelector('input[name=csrf_token]');
+			if (!input) {
+				input = document.createElement('input');
+				input.type = 'hidden';
+				input.name = 'csrf_token';
+				form.appendChild(input);
+			}
+			input.value = token;
+			});
+		};
+		injectCSRFToken(document);
+		$(document).on('shown.bs.modal', '.modal', function() {
+			injectCSRFToken(this);
+		});
+		new MutationObserver(function() {
+			document.querySelectorAll('.modal').forEach(function(modal) {
+				injectCSRFToken(modal);
+			});
+		}).observe(document.body, {childList: true, subtree: true});
+	})('%s');
+	'''%(here.getCSRFToken(request))).replace('\t','')">
+</script>

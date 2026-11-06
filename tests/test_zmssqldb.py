@@ -548,341 +548,155 @@ class ZMSSqlDbReflectionTest(unittest.TestCase):
     self.assertEqual(['id', 'name'], sorted(x['id'] for x in entities[0]['columns']))
 
 
-class SanitizeSqlParamTest(unittest.TestCase):
-  r"""
-  Unit tests for sanitize_sqlparam() function.
 
-  Validates SQL injection prevention including obfuscation/encoding techniques:
-  - URL encoding (%, double encoding)
-  - HTML entities (&#39;, &apos;, etc.)
-  - Escape sequences (\x, \u, \U, octal)
-  - SQL comments (--, /*, #)
-  - Null byte injection
-  - Whitespace normalization
+class RequestParamNormalizationTest(unittest.TestCase):
+  """
+  Unit tests for _normalize_request_param() function.
+  
+  Validates handling of list/tuple parameters and whitespace trimming.
   """
 
   def test_list_to_single_value(self):
-    """Test normalization of list parameters to single value."""
-    result = zmssqldb.sanitize_sqlparam(['col1', 'col2'], param_type=str)
+    """Test normalization of list parameters to single value (takes last)."""
+    result = zmssqldb._normalize_request_param(['col1', 'col2'])
     self.assertEqual('col2', result)
 
-  def test_empty_list_returns_default(self):
-    """Test that empty list returns default value."""
-    result = zmssqldb.sanitize_sqlparam([], param_type=str, default='fallback')
-    self.assertEqual('fallback', result)
+  def test_empty_list_returns_empty_string(self):
+    """Test that empty list returns empty string."""
+    result = zmssqldb._normalize_request_param([])
+    self.assertEqual('', result)
 
   def test_tuple_normalization(self):
-    """Test normalization of tuple parameters."""
-    result = zmssqldb.sanitize_sqlparam(('a', 'b', 'c'), param_type=str)
+    """Test normalization of tuple parameters (takes last)."""
+    result = zmssqldb._normalize_request_param(('a', 'b', 'c'))
     self.assertEqual('c', result)
 
-  def test_none_returns_default(self):
-    """Test that None returns default value."""
-    result = zmssqldb.sanitize_sqlparam(None, param_type=str, default='fallback')
-    self.assertEqual('fallback', result)
+  def test_none_returns_empty_string(self):
+    """Test that None returns empty string."""
+    result = zmssqldb._normalize_request_param(None)
+    self.assertEqual('', result)
 
-  def test_empty_string_returns_default(self):
-    """Test that empty string returns default value."""
-    result = zmssqldb.sanitize_sqlparam('', param_type=str, default='fallback')
-    self.assertEqual('fallback', result)
+  def test_empty_string_returns_empty_string(self):
+    """Test that empty string returns empty string."""
+    result = zmssqldb._normalize_request_param('')
+    self.assertEqual('', result)
 
   def test_whitespace_stripping(self):
     """Test that leading/trailing whitespace is stripped."""
-    result = zmssqldb.sanitize_sqlparam('  spaced  ', param_type=str)
+    result = zmssqldb._normalize_request_param('  spaced  ')
     self.assertEqual('spaced', result)
 
-  def test_allowed_values_validation_valid(self):
-    """Test whitelist validation with valid value."""
-    result = zmssqldb.sanitize_sqlparam(
-        'desc',
-        param_type=str,
-        allowed_values=('asc', 'desc'),
-        default='asc'
-    )
-    self.assertEqual('desc', result)
+  def test_single_string_value(self):
+    """Test single string value is returned as-is (trimmed)."""
+    result = zmssqldb._normalize_request_param('users.id')
+    self.assertEqual('users.id', result)
 
-  def test_allowed_values_validation_invalid(self):
-    """Test whitelist validation with invalid value returns default."""
-    result = zmssqldb.sanitize_sqlparam(
-        'invalid',
-        param_type=str,
-        allowed_values=('asc', 'desc'),
-        default='asc'
-    )
-    self.assertEqual('asc', result)
 
-  def test_integer_conversion(self):
-    """Test conversion to integer."""
-    result = zmssqldb.sanitize_sqlparam('42', param_type=int, default=0)
-    self.assertEqual(42, result)
-    self.assertIsInstance(result, int)
+class SqlIdentifierValidationTest(unittest.TestCase):
+  """
+  Unit tests for _validate_sql_identifier() function.
+  
+  Validates SQL identifier whitelisting (column/table names in ORDER BY).
+  """
 
-  def test_integer_conversion_invalid(self):
-    """Test integer conversion with invalid value returns default."""
-    result = zmssqldb.sanitize_sqlparam('not_a_number', param_type=int, default=1)
-    self.assertEqual(1, result)
+  def test_valid_identifier_simple(self):
+    """Test valid simple identifier."""
+    allowed = ['id', 'name', 'email']
+    result = zmssqldb._validate_sql_identifier('id', allowed)
+    self.assertTrue(result)
 
-  def test_float_conversion(self):
-    """Test conversion to float."""
-    result = zmssqldb.sanitize_sqlparam('3.14', param_type=float, default=0.0)
-    self.assertAlmostEqual(3.14, result, places=2)
-    self.assertIsInstance(result, float)
+  def test_valid_identifier_with_underscore(self):
+    """Test valid identifier with underscores."""
+    allowed = ['user_id', 'created_at']
+    result = zmssqldb._validate_sql_identifier('user_id', allowed)
+    self.assertTrue(result)
 
-  def test_boolean_conversion_true(self):
-    """Test boolean conversion for true values."""
-    for value in ['true', '1', 'yes', 'on', 'True', 'YES', 'ON']:
-      result = zmssqldb.sanitize_sqlparam(value, param_type=bool, default=False)
-      self.assertTrue(result, f"Failed for {value!r}")
+  def test_valid_identifier_table_qualified(self):
+    """Test valid table.column qualified identifier."""
+    allowed = ['id', 'name']
+    result = zmssqldb._validate_sql_identifier('users.id', allowed)
+    self.assertTrue(result)
 
-  def test_boolean_conversion_false(self):
-    """Test boolean conversion for false values."""
-    for value in ['false', '0', 'no', 'off', 'False', 'NO', 'OFF']:
-      result = zmssqldb.sanitize_sqlparam(value, param_type=bool, default=True)
-      self.assertFalse(result, f"Failed for {value!r}")
+  def test_invalid_identifier_not_in_whitelist(self):
+    """Test identifier not in whitelist fails."""
+    allowed = ['id', 'name']
+    result = zmssqldb._validate_sql_identifier('password', allowed)
+    self.assertFalse(result)
 
-  def test_invalid_param_type_raises_error(self):
-    """Test that invalid param_type raises ValueError."""
-    with self.assertRaises(ValueError):
-      zmssqldb.sanitize_sqlparam('value', param_type=list)
+  def test_invalid_identifier_with_quote(self):
+    """Test identifier with quote fails."""
+    allowed = ['id']
+    result = zmssqldb._validate_sql_identifier("id'; DROP", allowed)
+    self.assertFalse(result)
 
-  def test_whitelist_optimization_skips_sanitization(self):
-    """Test that values in whitelist skip expensive sanitization."""
-    # When value is already in whitelist, it should return immediately
-    # without going through URL decoding, escape processing, etc.
-    result = zmssqldb.sanitize_sqlparam(
-        'asc',
-        param_type=str,
-        allowed_values=('asc', 'desc'),
-        default='asc'
-    )
-    self.assertEqual('asc', result)
-    # Even complex obfuscations won't match whitelist
-    result_obfuscated = zmssqldb.sanitize_sqlparam(
-        'asc%27; DROP',
-        param_type=str,
-        allowed_values=('asc', 'desc'),
-        default='asc'
-    )
-    self.assertEqual('asc', result_obfuscated)  # Returns default due to no match
+  def test_invalid_identifier_with_semicolon(self):
+    """Test identifier with semicolon fails."""
+    allowed = ['id']
+    result = zmssqldb._validate_sql_identifier("id; DELETE", allowed)
+    self.assertFalse(result)
 
-  # ========== OBFUSCATION TESTS ==========
+  def test_invalid_identifier_with_comment(self):
+    """Test identifier with SQL comment fails."""
+    allowed = ['id']
+    result = zmssqldb._validate_sql_identifier("id --", allowed)
+    self.assertFalse(result)
 
-  def test_url_encoded_quote(self):
-    """Test URL-encoded quote (%27) is decoded and removed."""
-    result = zmssqldb.sanitize_sqlparam("col%27; DROP TABLE", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertIn("col;", result)
+  def test_empty_identifier_fails(self):
+    """Test empty identifier fails."""
+    allowed = ['id']
+    result = zmssqldb._validate_sql_identifier('', allowed)
+    self.assertFalse(result)
 
-  def test_url_encoded_space(self):
-    """Test URL-encoded space (%20) is decoded."""
-    result = zmssqldb.sanitize_sqlparam("col%20name", param_type=str)
-    self.assertEqual("col name", result)
+  def test_case_insensitive_matching(self):
+    """Test that matching is case-insensitive."""
+    allowed = ['userId', 'userName']
+    result = zmssqldb._validate_sql_identifier('USERID', allowed)
+    self.assertTrue(result)
 
-  def test_double_encoded_quote(self):
-    """Test double-encoded quote (%2527) is decoded."""
-    result = zmssqldb.sanitize_sqlparam("col%2527; DROP", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertEqual("col; DROP", result)
+  def test_table_qualified_case_insensitive(self):
+    """Test table-qualified matching is case-insensitive."""
+    allowed = ['id', 'name']
+    result = zmssqldb._validate_sql_identifier('USERS.ID', allowed)
+    self.assertTrue(result)
 
-  def test_triple_encoded_quote(self):
-    """Test triple-encoded quote is recursively decoded."""
-    result = zmssqldb.sanitize_sqlparam("col%252527", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertEqual("col", result)
 
-  def test_html_entity_numeric_quote(self):
-    """Test HTML numeric entity (&#39;) is decoded."""
-    result = zmssqldb.sanitize_sqlparam("col&#39;DROP", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertEqual("colDROP", result)
+class RecordSetSortIntegrationTest(unittest.TestCase):
+  """
+  Integration tests for recordSet_Sort method.
+  
+  Validates the refactored sorting using new validation helpers.
+  """
 
-  def test_html_entity_named_apos(self):
-    """Test HTML named entity (&apos;) is decoded."""
-    result = zmssqldb.sanitize_sqlparam("col&apos;DROP", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertEqual("colDROP", result)
-
-  def test_html_entity_double_quote(self):
-    """Test HTML entity for double quote (&quot;) is decoded."""
-    result = zmssqldb.sanitize_sqlparam('col&quot;DROP&quot;', param_type=str)
-    self.assertNotIn('"', result)
-    self.assertEqual('colDROP', result)
-
-  def test_hex_escape_quote(self):
-    """Test hex escape (\\x27) is decoded."""
-    result = zmssqldb.sanitize_sqlparam("col\\x27 DROP", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertEqual("col DROP", result)
-
-  def test_hex_escape_null_byte(self):
-    """Test hex escape null byte (\\x00) is removed."""
-    result = zmssqldb.sanitize_sqlparam("col\\x00DROP", param_type=str)
-    self.assertNotIn("\x00", result)
-    self.assertEqual("colDROP", result)
-
-  def test_unicode_escape_u0027(self):
-    """Test Unicode escape (\\u0027) is decoded."""
-    result = zmssqldb.sanitize_sqlparam("col\\u0027 DROP", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertEqual("col DROP", result)
-
-  def test_unicode_escape_U00000027(self):
-    """Test long Unicode escape (\\U00000027) is decoded."""
-    result = zmssqldb.sanitize_sqlparam("col\\U00000027 DROP", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertEqual("col DROP", result)
-
-  def test_octal_escape_quote(self):
-    """Test octal escape (\\047 = quote) is decoded."""
-    result = zmssqldb.sanitize_sqlparam("col\\047 DROP", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertEqual("col DROP", result)
-
-  def test_backslash_escape_quote(self):
-    """Test backslash escape (\\\') is handled."""
-    result = zmssqldb.sanitize_sqlparam("col\\' DROP", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertEqual("col DROP", result)
-
-  def test_backslash_escape_double_quote(self):
-    """Test backslash escape (\\\") is handled."""
-    result = zmssqldb.sanitize_sqlparam('col\\" DROP', param_type=str)
-    self.assertNotIn('"', result)
-    self.assertEqual('col DROP', result)
-
-  def test_sql_comment_line_removal(self):
-    """Test SQL line comment (--) is removed."""
-    result = zmssqldb.sanitize_sqlparam("col'--comment", param_type=str)
-    self.assertNotIn("--", result)
-    self.assertNotIn("'", result)
-    self.assertEqual("col", result)
-
-  def test_sql_comment_block_removal(self):
-    """Test SQL block comment (/* */) is removed."""
-    result = zmssqldb.sanitize_sqlparam("col'/*comment*/", param_type=str)
-    self.assertNotIn("/*", result)
-    self.assertNotIn("*", result)
-    self.assertNotIn("'", result)
-    self.assertEqual("col", result)
-
-  def test_sql_comment_mysql_hash_removal(self):
-    """Test MySQL comment (#) is removed."""
-    result = zmssqldb.sanitize_sqlparam("col'#comment", param_type=str)
-    self.assertNotIn("#", result)
-    self.assertNotIn("'", result)
-    self.assertEqual("col", result)
-
-  def test_null_byte_removal(self):
-    """Test null byte (\\x00) is removed."""
-    result = zmssqldb.sanitize_sqlparam("col\\x00 data", param_type=str)
-    self.assertNotIn("\x00", result)
-    self.assertEqual("col data", result)
-
-  def test_whitespace_normalization_tabs(self):
-    """Test tabs are normalized to spaces."""
-    result = zmssqldb.sanitize_sqlparam("col\t' DROP\t", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertEqual("col DROP", result)
-
-  def test_whitespace_normalization_newlines(self):
-    """Test newlines are normalized."""
-    result = zmssqldb.sanitize_sqlparam("col\n' DROP\n", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertEqual("col DROP", result)
-
-  def test_whitespace_normalization_multiple_spaces(self):
-    """Test multiple spaces are collapsed."""
-    result = zmssqldb.sanitize_sqlparam("col   '   DROP", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertEqual("col DROP", result)
-
-  def test_or_injection_prevention(self):
-    """Test OR injection (col' OR 1=1) is neutralized."""
-    result = zmssqldb.sanitize_sqlparam("col' OR 1=1", param_type=str)
-    self.assertNotIn("'", result)
-    # Result should have OR and 1=1 but be unusable for injection
-    self.assertIn("OR", result)
-    self.assertEqual("col OR 1=1", result)
-
-  def test_union_injection_prevention(self):
-    """Test UNION injection is prevented."""
-    result = zmssqldb.sanitize_sqlparam("col' UNION SELECT", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertEqual("col UNION SELECT", result)
-
-  def test_complex_obfuscation_mixed(self):
-    """Test complex mixed obfuscation is handled."""
-    # URL-encoded quote + comment
-    result = zmssqldb.sanitize_sqlparam("col%27; DROP TABLE--", param_type=str)
-    self.assertNotIn("'", result)
-    self.assertNotIn("--", result)
-    self.assertEqual("col; DROP TABLE", result)
-
-  def test_allowed_values_with_url_encoded(self):
-    """Test whitelist validation after URL decoding."""
-    result = zmssqldb.sanitize_sqlparam(
-        'asc%20extra',  # URL encoded with extra data
-        param_type=str,
-        allowed_values=('asc', 'desc'),
-        default='asc'
-    )
-    # After decoding becomes "asc extra", which doesn't match allowed values
-    self.assertEqual('asc', result)
-
-  def test_allowed_values_valid_after_decode(self):
-    """Test whitelist validation with valid URL-encoded value."""
-    result = zmssqldb.sanitize_sqlparam(
-        '%64%65%73%63',  # URL-encoded "desc"
-        param_type=str,
-        allowed_values=('asc', 'desc'),
-        default='asc'
-    )
-    self.assertEqual('desc', result)
-
-  def test_recordset_sort_scenario_normal(self):
-    """Test normal recordSet_Sort scenario."""
-    qorder = zmssqldb.sanitize_sqlparam('users.id', param_type=str, default='')
-    qorderdir = zmssqldb.sanitize_sqlparam(
-        'asc',
-        param_type=str,
-        allowed_values=('asc', 'desc'),
-        default='asc'
-    )
+  def test_recordset_sort_normal_scenario(self):
+    """Test normal recordSet_Sort scenario with valid inputs."""
+    qorder = zmssqldb._normalize_request_param('users.id')
+    qorderdir = zmssqldb._normalize_request_param('asc')
+    qorderdir = qorderdir if qorderdir in ('asc', 'desc') else 'asc'
+    
     self.assertEqual('users.id', qorder)
     self.assertEqual('asc', qorderdir)
 
-  def test_recordset_sort_scenario_multivalue_list(self):
-    """Test recordSet_Sort with multi-value parameter list."""
-    qorder = zmssqldb.sanitize_sqlparam(
-        ['old_value', 'users.name'],
-        param_type=str,
-        default=''
-    )
-    qorderdir = zmssqldb.sanitize_sqlparam(
-        ['asc', 'desc'],
-        param_type=str,
-        allowed_values=('asc', 'desc'),
-        default='asc'
-    )
+  def test_recordset_sort_multivalue_list(self):
+    """Test recordSet_Sort with multi-value parameter list (uses last value)."""
+    qorder = zmssqldb._normalize_request_param(['old_value', 'users.name'])
+    qorderdir = zmssqldb._normalize_request_param(['asc', 'desc'])
+    qorderdir = qorderdir if qorderdir in ('asc', 'desc') else 'asc'
+    
     self.assertEqual('users.name', qorder)
     self.assertEqual('desc', qorderdir)
 
-  def test_recordset_sort_scenario_injection_attempt(self):
-    """Test recordSet_Sort with SQL injection attempt."""
-    qorder = zmssqldb.sanitize_sqlparam(
-        "users.id'; DROP TABLE--",
-        param_type=str,
-        default=''
-    )
-    qorderdir = zmssqldb.sanitize_sqlparam(
-        "asc' OR 1=1",
-        param_type=str,
-        allowed_values=('asc', 'desc'),
-        default='asc'
-    )
-    # First is decoded and quotes removed
-    self.assertNotIn("'", qorder)
-    # Second doesn't match whitelist, returns default
+  def test_recordset_sort_injection_attempt(self):
+    """Test recordSet_Sort rejects injection attempt."""
+    allowed_cols = ['id', 'name', 'email']
+    
+    qorder = zmssqldb._normalize_request_param("users.id'; DROP TABLE--")
+    qorderdir = zmssqldb._normalize_request_param("asc' OR 1=1")
+    qorderdir = qorderdir if qorderdir in ('asc', 'desc') else 'asc'
+    
+    is_valid_order = zmssqldb._validate_sql_identifier(qorder, allowed_cols)
+    
+    # Injection attempt should fail validation
+    self.assertFalse(is_valid_order)
     self.assertEqual('asc', qorderdir)
 
 
